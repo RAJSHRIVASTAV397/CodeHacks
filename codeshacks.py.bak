@@ -1,0 +1,516 @@
+#!/usr/bin/env python3
+"""
+    CodesHacks - Advanced Web Reconnaissance & Vulnerability Scanning Tool
+    Author: Raj Shrivastav
+"""
+
+import os
+import socket
+import logging
+import sys
+import argparse
+import configparser
+from datetime import datetime
+from selenium.webdriver.chrome.options import Options
+from scanner import Scanner
+from tools import ExternalTools
+
+class CodesHacks:
+    def __init__(self):
+        self.banner = """
+        ██████╗ ██████╗ ██████╗ ███████╗██╗  ██╗ █████╗  ██████╗██╗  ██╗███████╗
+        ██╔════╝██╔═══██╗██╔══██╗██╔════╝██║  ██║██╔══██╗██╔════╝██║ ██╔╝██╔════╝
+        ██║     ██║   ██║██║  ██║█████╗  ███████║███████║██║     █████╔╝ ███████╗
+        ██║     ██║   ██║██║  ██║██╔══╝  ██╔══██║██╔══██║██║     ██╔═██╗ ╚════██║
+        ╚██████╗╚██████╔╝██████╔╝███████╗██║  ██║██║  ██║╚██████╗██║  ██╗███████║
+         ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝
+                            Advanced Reconnaissance Framework
+                                Author: Raj Shrivastav
+        """
+        self.version = "1.0.0"
+        self.output_dir = "codeshacks_results"
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.shodan_api_key = None
+        self.load_api_keys()
+
+        pass
+    def run(self):
+        self.print_banner()
+        domain = input("[?] Enter domain to scan with Shodan: ").strip()
+        output_file = os.path.join(self.create_output_dir(), f"{domain}_shodan.txt")
+        self.shodan_scan(domain, output_file)
+        
+
+
+
+HELP_TEXT = """
+██████╗ ██████╗ ██████╗ ███████╗██╗  ██╗ █████╗  ██████╗██╗  ██╗███████╗
+██╔════╝██╔═══██╗██╔══██╗██╔════╝██║  ██║██╔══██╗██╔════╝██║ ██╔╝██╔════╝
+██║     ██║   ██║██║  ██║█████╗  ███████║███████║██║     █████╔╝ ███████╗
+██║     ██║   ██║██║  ██║██╔══╝  ██╔══██║██╔══██║██║     ██╔═██╗ ╚════██║
+╚██████╗╚██████╔╝██████╔╝███████╗██║  ██║██║  ██║╚██████╗██║  ██╗███████║
+ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝
+                    Advanced Reconnaissance Framework v1.1.0
+                           Author: Raj Shrivastav
+
+USAGE:
+    python codeshacks.py -d <target> [options]
+
+QUICK COMMANDS:
+    Full assessment (default):
+        python codeshacks.py -d example.com --full
+
+    Passive reconnaissance only:
+        python codeshacks.py -d example.com --passive
+
+    Active scanning only:
+        python codeshacks.py -d example.com --active
+
+    Vulnerability scanning only:
+        python codeshacks.py -d example.com --vuln
+
+    Quick (fast) scan:
+        python codeshacks.py -d example.com --quick
+
+    Stealth scan (slower, polite):
+        python codeshacks.py -d example.com --stealth --delay 1000
+
+    Custom scan (pick modules):
+        python codeshacks.py -d example.com --custom "dns,ports,web" --threads 10
+
+DETAILED SCAN EXAMPLES (by module):
+
+1) Passive Reconnaissance
+   Goal: find subdomains, DNS records, and historical footprints without probing targets.
+   Example:
+     python codeshacks.py -d example.com --passive --output results/passive_scan --output-format json
+   Notes: Uses DNS enumeration, Wayback/archives and passive APIs if API keys are provided.
+   Tools: assetfinder, alienvault, spiderfoot
+
+2) Active Scanning
+   Goal: probe live hosts, perform port scans, technology detection and basic web checks.
+   Example:
+     python codeshacks.py -d example.com --active --ports 80,443,8080-8090 --threads 20
+   Notes: Performs TCP/UDP scans, banner grabbing and quick web path checks.
+   Tools: httpx-toolkit, katana (web crawler), kiterunner (API discovery)
+
+3) Vulnerability Scanning
+   Goal: run automated vulnerability checks (SQLi, XSS, LFI, SSRF, etc.) and tool integrations.
+   Example:
+     python codeshacks.py -d example.com --vuln --min-severity medium --threads 30
+   Notes: Can integrate Nikto, Nuclei, SQLMap, WPScan and built-in checks.
+   Tools: sqlmap, joomscan, paramspider
+
+4) Quick Scan
+   Goal: fast reconnaissance to get an initial view of the target.
+   Example:
+     python codeshacks.py -d example.com --quick
+   Notes: Limited port set and lightweight web checks for speed.
+   Tools: httpx-toolkit (fast HTTP probing)
+
+5) Stealth Mode
+   Goal: reduce scan noisiness with delays and lower parallelism.
+   Example:
+     python codeshacks.py -d example.com --stealth --delay 2000 --threads 3
+   Notes: Good for sensitive environments or stealth assessments.
+
+6) Custom Scan
+   Goal: run a tailored set of modules.
+   Example:
+     python codeshacks.py -d example.com --custom "dns,web,vuln" --dns-wordlist wordlists/dns.txt --web-paths wordlists/paths.txt
+   Notes: Comma-separated module names: dns, ports, web, vuln, tech, crawl
+
+INTEGRATED TOOLS:
+    Web Reconnaissance:
+    - httpx-toolkit     Fast and multi-purpose HTTP/HTTPS toolkit
+    - katana           Advanced web crawler and spider tool
+    - kiterunner       API discovery tool
+
+    Enumeration & Intelligence:
+    - alienvault       Open Threat Exchange integration for threat intel
+    - assetfinder      Subdomain discovery tool
+    - spiderfoot       Advanced OSINT automation tool
+
+    Web Security:
+    - jsparser        JavaScript parser and analyzer
+    - linkfinder      Extract endpoints from JavaScript files
+    - paramspider     Parameter discovery for web applications
+    - joomscan       Joomla vulnerability scanner
+    - sqlmap         Advanced SQL injection detection tool
+
+COMMON FLAGS:
+    -d, --domain        Target domain or IP (required)
+    -o, --output        Output directory
+    -w, --wordlist      Wordlist path for enumerations
+    --timeout           Request timeout (seconds)
+    --threads           Number of concurrent threads
+    --rate-limit        Requests per second
+    --delay             Milliseconds delay between requests
+
+API INTEGRATIONS:
+    --shodan-key        Shodan API key (optional)
+    --censys-key        Censys API key (optional)
+    --virustotal-key    VirusTotal API key (optional)
+    --alienvault-key    AlienVault OTX API key (optional)
+
+OUTPUT / REPORTING:
+    --output-format     txt (default), json, html, xml
+    --report-template   Path to custom report template
+    Results are saved under the output directory with a timestamped subfolder.
+
+NOTES & TROUBLESHOOTING:
+    - Use --debug to enable verbose logging for troubleshooting.
+    - External tools (httpx, katana, sqlmap etc.) need to be installed separately.
+    - API-integrations require valid API keys and network access.
+    - Run with administrative privileges if using low-level port scanning features.
+
+For module-specific help and detailed tool usage, run:
+    python codeshacks.py --help-module <module>
+    python codeshacks.py --help-tool <toolname>
+"""
+
+# Tool Info
+TOOL_INFO = {
+    'name': 'CodesHacks',
+    'version': '1.1.0',
+    'author': 'Raj Shrivastav',
+    'description': 'Advanced Web Reconnaissance & Vulnerability Scanning Tool'
+}
+
+class CodesHacks:
+    def __init__(self):
+        self.version = TOOL_INFO['version']
+        self.output_dir = "codeshacks_results"
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.api_keys = {}
+        self.config_file = 'codeshacks.ini'
+        self.session_dir = None
+        self.setup_logging()
+        self.load_config()
+        self.load_api_keys()
+        self.setup_browser()
+        
+        # Initialize tools configuration
+        self.tool_options = {
+            'api_keys': self.api_keys,
+            'threads': getattr(self, 'threads', 10),
+            'timeout': getattr(self, 'timeout', 10),
+            'rate_limit': getattr(self, 'rate_limit', 50)
+        }
+        
+        # Initialize scanner and tools
+        self.scanner = Scanner(self.tool_options, self.logger)
+        self.tools = ExternalTools(self.logger, self.output_dir, self.tool_options)
+
+    def setup_logging(self):
+        """Configure logging for the tool"""
+        log_file = os.path.join(self.output_dir, f'codeshacks_{self.timestamp}.log')
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        import logging
+        self.logger = logging.getLogger('CodesHacks')
+        self.logger.setLevel(logging.INFO)
+        
+        # File handler
+        fh = logging.FileHandler(log_file)
+        fh.setLevel(logging.DEBUG)
+        
+        # Console handler
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        
+        # Formatter
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        fh.setFormatter(formatter)
+        ch.setFormatter(formatter)
+        
+        self.logger.addHandler(fh)
+        self.logger.addHandler(ch)
+
+    def load_config(self):
+        """Load configuration from INI file"""
+        config = configparser.ConfigParser()
+        if os.path.exists(self.config_file):
+            config.read(self.config_file)
+            
+            # Load settings
+            if 'SETTINGS' in config:
+                self.output_dir = config['SETTINGS'].get('output_dir', self.output_dir)
+                self.threads = config['SETTINGS'].getint('threads', 10)
+                self.timeout = config['SETTINGS'].getint('timeout', 10)
+                self.rate_limit = config['SETTINGS'].getint('rate_limit', 50)
+                self.debug = config['SETTINGS'].getboolean('debug', False)
+                
+            # Load scan options
+            if 'SCAN_OPTIONS' in config:
+                self.top_ports = config['SCAN_OPTIONS'].getint('top_ports', 100)
+                self.screenshot_timeout = config['SCAN_OPTIONS'].getint('screenshot_timeout', 10)
+                self.crawl_depth = config['SCAN_OPTIONS'].getint('crawl_depth', 3)
+                self.passive_only = config['SCAN_OPTIONS'].getboolean('passive_only', False)
+                self.active_only = config['SCAN_OPTIONS'].getboolean('active_only', False)
+                self.vuln_only = config['SCAN_OPTIONS'].getboolean('vuln_only', False)
+        else:
+            self.logger.warning(f"Configuration file {self.config_file} not found, using defaults")
+            # Set default values
+            self.threads = 10
+            self.timeout = 10
+            self.rate_limit = 50
+            self.debug = False
+            self.top_ports = 100
+            self.screenshot_timeout = 10
+            self.crawl_depth = 3
+            self.passive_only = False
+            self.active_only = False
+            self.vuln_only = False
+
+    def setup_browser(self):
+        """Setup browser options for screenshots"""
+        try:
+            from selenium.webdriver.chrome.options import Options
+            self.chrome_options = Options()
+            self.chrome_options.add_argument("--headless")
+            self.chrome_options.add_argument("--no-sandbox")
+            self.chrome_options.add_argument("--disable-dev-shm-usage")
+            self.chrome_options.add_argument("--window-size=1920,1080")
+            self.chrome_options.add_argument("--disable-gpu")
+            self.chrome_options.add_argument("--ignore-certificate-errors")
+            self.logger.info("Browser options configured successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to setup browser options: {str(e)}")
+            self.chrome_options = None
+
+
+        parser = argparse.ArgumentParser(
+            description="CodesHacks - Advanced Web Reconnaissance & Vulnerability Scanning Tool",
+            formatter_class=argparse.RawDescriptionHelpFormatter
+        )
+
+        # Target options
+        target_group = parser.add_argument_group('Target Options')
+        target_group.add_argument('-d', '--domain', required=True, help='Target domain or IP (required)')
+        target_group.add_argument('--scope', help='Define scan scope (e.g., *.domain.com)')
+        target_group.add_argument('--exclude', help='Exclude subdomains/patterns')
+        target_group.add_argument('--include', help='Include only specific subdomains')
+        target_group.add_argument('--ports', help='Custom port ranges (default: top 1000)')
+        target_group.add_argument('--protocols', help='Specify protocols to scan (e.g., http,https,ftp)')
+
+        # Scan modes
+        mode_group = parser.add_argument_group('Scan Modes')
+        mode_group.add_argument('--full', action='store_true', help='Full assessment - All scanning modules')
+        mode_group.add_argument('--passive', action='store_true', help='Passive reconnaissance only')
+        mode_group.add_argument('--active', action='store_true', help='Active scanning only')
+        mode_group.add_argument('--vuln', action='store_true', help='Vulnerability scanning only')
+        mode_group.add_argument('--quick', action='store_true', help='Quick scan with basic checks')
+        mode_group.add_argument('--stealth', action='store_true', help='Stealthy scan with delayed requests')
+        mode_group.add_argument('--custom', help='Custom scan with specific modules (comma-separated)')
+
+        # Scan configuration
+        config_group = parser.add_argument_group('Scan Configuration')
+        config_group.add_argument('-o', '--output', help='Custom output directory')
+        config_group.add_argument('-w', '--wordlist', help='Custom wordlist for scanning')
+        config_group.add_argument('-c', '--config', help='Path to configuration file')
+        config_group.add_argument('-p', '--profile', help='Use specific profile from config')
+        config_group.add_argument('--threads', type=int, help='Number of concurrent threads (default: 10)')
+        config_group.add_argument('--timeout', type=int, help='Request timeout in seconds (default: 10)')
+        config_group.add_argument('--rate-limit', type=int, help='Requests per second (default: 50)')
+        config_group.add_argument('--retries', type=int, help='Number of retry attempts (default: 3)')
+        config_group.add_argument('--delay', type=int, help='Delay between requests in milliseconds')
+        config_group.add_argument('--user-agent', help='Custom User-Agent string')
+        config_group.add_argument('--cookies', help='Cookie file or string')
+        config_group.add_argument('--headers', help='Custom headers file')
+        config_group.add_argument('--proxy', help='Proxy URL (e.g., http://127.0.0.1:8080)')
+
+        # API keys
+        api_group = parser.add_argument_group('API Configuration')
+        api_group.add_argument('--shodan-key', help='Set Shodan API key')
+        api_group.add_argument('--censys-key', help='Set Censys API key')
+        api_group.add_argument('--virustotal-key', help='Set VirusTotal API key')
+        api_group.add_argument('--securitytrails-key', help='Set SecurityTrails API key')
+        api_group.add_argument('--alienvault-key', help='Set AlienVault OTX API key')
+        
+        # Tool Options
+        tool_group = parser.add_argument_group('Tool Configuration')
+        tool_group.add_argument('--httpx-options', help='Additional options for httpx-toolkit')
+        tool_group.add_argument('--katana-depth', type=int, default=10, help='Crawling depth for katana')
+        tool_group.add_argument('--kiterunner-wordlist', help='API wordlist for kiterunner')
+        tool_group.add_argument('--jsparser-pattern', help='Custom pattern for JavaScript parsing')
+        tool_group.add_argument('--paramspider-level', choices=['0','1','2'], default='1',
+                              help='Crawling level for paramspider (0=fast, 2=deep)')
+        tool_group.add_argument('--sqlmap-risk', choices=['1','2','3'], default='1',
+                              help='Risk level for SQLMap tests')
+        tool_group.add_argument('--help-tool', help='Show detailed help for a specific tool')
+
+        # Output options
+        output_group = parser.add_argument_group('Output Options')
+        output_group.add_argument('--output-format', choices=['txt', 'json', 'html', 'xml'], default='txt',
+                                  help='Output format (default: txt)')
+        output_group.add_argument('--min-severity', choices=['low', 'medium', 'high', 'critical'], default='low',
+                                  help='Minimum vulnerability severity to report')
+        output_group.add_argument('--report-template', help='Custom report template file')
+        output_group.add_argument('--no-color', action='store_true', help='Disable colored output')
+        output_group.add_argument('--quiet', action='store_true', help='Minimal output, only show findings')
+        output_group.add_argument('--debug', action='store_true', help='Enable debug logging')
+        output_group.add_argument('--verbose', action='store_true', help='Enable verbose output (informational)')
+
+        # Module-specific options
+        module_group = parser.add_argument_group('Module-Specific Options')
+        module_group.add_argument('--cms', choices=['wordpress', 'drupal', 'joomla'], help='Specific CMS to scan')
+        module_group.add_argument('--wp-plugins', action='store_true', help='Scan WordPress plugins')
+        module_group.add_argument('--dns-wordlist', help='Custom DNS wordlist')
+        module_group.add_argument('--web-paths', help='Custom web paths wordlist')
+        module_group.add_argument('--vuln-db', help='Custom vulnerability database')
+
+        # Misc
+        parser.add_argument('--help-module', help='Show help for a specific module (e.g., dns, web)')
+
+        return parser.parse_args()
+
+    def show_tool_help(self, tool_name):
+        # Define help texts for supported tools
+        tool_help = {
+            'httpx': "httpx-toolkit: Fast and multi-purpose HTTP/HTTPS toolkit. Usage: httpx [options] -l targets.txt",
+            'katana': "katana: Advanced web crawler and spider tool. Usage: katana -u https://example.com [options]",
+            'kiterunner': "kiterunner: API discovery tool. Usage: kiterunner -u https://example.com -w wordlist.txt",
+            'jsparser': "jsparser: JavaScript parser and analyzer. Usage: jsparser -u https://example.com/script.js",
+            'linkfinder': "linkfinder: Extract endpoints from JavaScript files. Usage: linkfinder -i script.js",
+            'paramspider': "paramspider: Parameter discovery for web applications. Usage: paramspider -d example.com",
+            'joomscan': "joomscan: Joomla vulnerability scanner. Usage: joomscan --url https://example.com",
+            'sqlmap': "sqlmap: Advanced SQL injection detection tool. Usage: sqlmap -u 'http://example.com/vuln.php?id=1'",
+            'assetfinder': "assetfinder: Subdomain discovery tool. Usage: assetfinder --subs-only example.com",
+            'alienvault': "alienvault: Open Threat Exchange integration for threat intel.",
+            'spiderfoot': "spiderfoot: Advanced OSINT automation tool. Usage: spiderfoot -s example.com"
+        }
+        if tool_name in tool_help:
+            print(tool_help[tool_name])
+        else:
+            self.logger.error(f"No help available for tool: {tool_name}")
+            print("Available tools: " + ", ".join(tool_help.keys()))
+
+    def run(self):
+        """Main execution method"""
+        try:
+            self.print_banner()
+            args = self.parse_arguments()
+
+            # Update configuration from command line arguments
+            if args.output:
+                self.output_dir = args.output
+            if args.timeout:
+                self.timeout = args.timeout
+            if args.threads:
+                self.threads = args.threads
+            if args.rate_limit:
+                self.rate_limit = args.rate_limit
+            # Logging verbosity
+            if getattr(args, 'debug', False):
+                self.logger.setLevel(logging.DEBUG)
+            elif getattr(args, 'verbose', False):
+                self.logger.setLevel(logging.INFO)
+            
+            # Update API keys from command line
+            if args.shodan_key:
+                self.api_keys['shodan'] = args.shodan_key
+            if args.censys_key:
+                self.api_keys['censys'] = args.censys_key
+            if args.virustotal_key:
+                self.api_keys['virustotal'] = args.virustotal_key
+            if args.securitytrails_key:
+                self.api_keys['securitytrails'] = args.securitytrails_key
+            if args.alienvault_key:
+                self.api_keys['alienvault'] = args.alienvault_key
+                
+            # Configure tool options
+            self.tool_options = {
+                'httpx': {'extra_options': args.httpx_options} if args.httpx_options else {},
+                'katana': {'depth': args.katana_depth},
+                'kiterunner': {'wordlist': args.kiterunner_wordlist} if args.kiterunner_wordlist else {},
+                'jsparser': {'pattern': args.jsparser_pattern} if args.jsparser_pattern else {},
+                'paramspider': {'level': args.paramspider_level},
+                'sqlmap': {'risk': args.sqlmap_risk}
+            }
+            
+            # If help requested for a specific tool
+            if args.help_tool:
+                self.show_tool_help(args.help_tool)
+                sys.exit(0)
+
+            # Create session directory
+            self.session_dir = self.create_output_dir()
+            self.logger.info(f"Results will be saved in: {self.session_dir}")
+
+            # Log API key status
+            self.logger.info("Loaded API keys:")
+            for api, key in self.api_keys.items():
+                self.logger.info(f"    {api.title()}: {'Set' if key else 'Not Set'}")
+
+            try:
+                # Execute scans based on arguments
+                if args.full or (not args.passive and not args.active and not args.vuln):
+                    self.logger.info("Starting complete assessment...")
+                    all_subs = self.scanner.passive_recon(args.domain, self.session_dir)
+                    alive_hosts = self.scanner.active_scan(args.domain, all_subs, self.session_dir)
+                    report_file = self.scanner.vuln_scan(args.domain, alive_hosts, self.session_dir)
+                    
+                    # Generate HTML report
+                    html_report = os.path.join(self.session_dir, "report.html")
+                    self.scanner.generate_report(report_file, html_report, self.session_dir)
+                    self.logger.info(f"Complete assessment finished! Report: {html_report}")
+                
+                elif args.passive:
+                    self.logger.info("Running passive reconnaissance only...")
+                    all_subs = self.scanner.passive_recon(args.domain, self.session_dir)
+                    self.logger.info(f"Passive reconnaissance completed. Results in: {all_subs}")
+                
+                elif args.active:
+                    self.logger.info("Running active scanning only...")
+                    input_file = args.wordlist or input("[?] Enter path to subdomains file: ")
+                    if os.path.exists(input_file):
+                        self.scanner.active_scan(args.domain, input_file, self.session_dir)
+                    else:
+                        self.logger.error(f"Input file not found: {input_file}")
+                        sys.exit(1)
+                
+                elif args.vuln:
+                    self.logger.info("Running vulnerability scanning only...")
+                    input_file = args.wordlist or input("[?] Enter path to alive hosts file: ")
+                    if os.path.exists(input_file):
+                        self.scanner.vuln_scan(args.domain, input_file, self.session_dir)
+                    else:
+                        self.logger.error(f"Input file not found: {input_file}")
+                        sys.exit(1)
+
+            except KeyboardInterrupt:
+                self.logger.warning("\nScan interrupted by user")
+                sys.exit(0)
+            except Exception as e:
+                self.logger.error(f"An error occurred during scanning: {str(e)}")
+                if self.debug:
+                    import traceback
+                    self.logger.debug(traceback.format_exc())
+                sys.exit(1)
+
+        except Exception as e:
+            self.logger.error(f"Critical error: {str(e)}")
+            if hasattr(self, 'debug') and self.debug:
+                import traceback
+                self.logger.debug(traceback.format_exc())
+            sys.exit(1)
+
+
+
+
+
+
+
+
+
+if __name__ == "__main__":
+    try:
+        tool = CodesHacks()
+        tool.run()
+    except KeyboardInterrupt:
+        print("\n[!] Scan interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"[!] Error: {e}")
+        sys.exit(1)
